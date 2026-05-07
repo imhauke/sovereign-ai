@@ -294,7 +294,7 @@ export function CommitsPanel() {
             <span className="text-[11px] text-muted">{commits.length} commits</span>
           )}
           <button
-            onClick={() => loadCommits(true)}
+            onClick={() => { loadCommits(true) }}
             disabled={loadingCommits}
             className="flex items-center gap-1.5 text-[12px] text-muted hover:text-white px-2.5 py-1.5 rounded-lg border border-border2 hover:border-muted transition-all disabled:opacity-40"
           >
@@ -326,7 +326,7 @@ export function CommitsPanel() {
           ) : error ? (
             <div className="px-3 py-6 text-center">
               <p className="text-[12px] text-err mb-3">{error}</p>
-              <button onClick={loadCommits} className="text-xs border border-border2 px-3 py-1.5 rounded hover:text-white transition-colors">
+              <button onClick={() => { loadCommits() }} className="text-xs border border-border2 px-3 py-1.5 rounded hover:text-white transition-colors">
                 Retry
               </button>
             </div>

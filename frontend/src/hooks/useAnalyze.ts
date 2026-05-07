@@ -2,34 +2,60 @@ import { useState } from 'react'
 import { analyzeDocument } from '../api'
 import type { AnalysisResult } from '../types'
 
-interface AnalyzeState {
-  loading: boolean
-  result: AnalysisResult | null
-  elapsed: number | null
-  error: string | null
+const LS_TEXT   = 'sovereign:analyze:text'
+const LS_RESULT = 'sovereign:analyze:result'
+const LS_ELAPSED = 'sovereign:analyze:elapsed'
+
+function loadLS<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw !== null ? (JSON.parse(raw) as T) : fallback
+  } catch {
+    return fallback
+  }
 }
 
 export function useAnalyze() {
-  const [state, setState] = useState<AnalyzeState>({
-    loading: false,
-    result: null,
-    elapsed: null,
-    error: null,
-  })
+  const [text,    setText_]   = useState<string>(() => loadLS(LS_TEXT, ''))
+  const [result,  setResult_] = useState<AnalysisResult | null>(() => loadLS(LS_RESULT, null))
+  const [elapsed, setElapsed_] = useState<number | null>(() => loadLS(LS_ELAPSED, null))
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
 
-  const analyze = async (text: string) => {
-    setState({ loading: true, result: null, elapsed: null, error: null })
+  function setText(val: string) {
+    setText_(val)
+    localStorage.setItem(LS_TEXT, JSON.stringify(val))
+  }
+
+  function setResult(val: AnalysisResult | null) {
+    setResult_(val)
+    localStorage.setItem(LS_RESULT, JSON.stringify(val))
+  }
+
+  function setElapsed(val: number | null) {
+    setElapsed_(val)
+    localStorage.setItem(LS_ELAPSED, JSON.stringify(val))
+  }
+
+  const analyze = async (input: string) => {
+    setLoading(true)
+    setResult(null)
+    setElapsed(null)
+    setError(null)
     try {
-      const res = await analyzeDocument(text)
+      const res = await analyzeDocument(input)
       if (res.ok) {
-        setState({ loading: false, result: res.result, elapsed: res.elapsed, error: null })
+        setResult(res.result)
+        setElapsed(res.elapsed)
       } else {
-        setState({ loading: false, result: null, elapsed: null, error: res.error })
+        setError(res.error)
       }
     } catch (err) {
-      setState({ loading: false, result: null, elapsed: null, error: String(err) })
+      setError(String(err))
+    } finally {
+      setLoading(false)
     }
   }
 
-  return { ...state, analyze }
+  return { text, setText, loading, result, elapsed, error, analyze }
 }

@@ -41,7 +41,7 @@ async def analyze(req: AnalyzeRequest):
     raw = ""
 
     try:
-        raw = await ollama.complete(f"Analyze this document:\n\n{req.text}", system=_SYSTEM)
+        raw = await ollama.complete(f"Analyze this document:\n\n{req.text}", system=_SYSTEM, think=False)
         start, end = raw.find("{"), raw.rfind("}") + 1
         if start == -1 or end == 0:
             raise ValueError("No JSON object found in model response")

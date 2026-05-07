@@ -1,14 +1,11 @@
-import { useRef } from 'react'
 import { useAnalyze } from '../../hooks/useAnalyze'
 import { ResultCard } from './ResultCard'
 
 export function AnalyzePanel() {
-  const { loading, result, elapsed, error, analyze } = useAnalyze()
-  const textRef = useRef<HTMLTextAreaElement>(null)
+  const { text, setText, loading, result, elapsed, error, analyze } = useAnalyze()
 
   function handleAnalyze() {
-    const text = textRef.current?.value.trim()
-    if (!text || loading) return
+    if (!text.trim() || loading) return
     analyze(text)
   }
 
@@ -23,7 +20,8 @@ export function AnalyzePanel() {
           </div>
         </div>
         <textarea
-          ref={textRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
           className="input-base flex-1"
           placeholder="Paste any sensitive document here. Nothing is sent to external servers."
         />
