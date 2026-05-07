@@ -6,10 +6,13 @@ import { Header } from './components/layout/Header'
 import { LogPanel } from './components/layout/LogPanel'
 import { ChatPanel } from './components/chat/ChatPanel'
 import { AnalyzePanel } from './components/analyze/AnalyzePanel'
+import { CommitsPanel } from './components/commits/CommitsPanel'
 
-const TABS = [
+type Tab = 'chat' | 'analyze' | 'commits'
+
+const TABS: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
   {
-    id: 'chat' as const,
+    id: 'chat',
     label: 'AI Chat',
     icon: (
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -18,7 +21,7 @@ const TABS = [
     ),
   },
   {
-    id: 'analyze' as const,
+    id: 'analyze',
     label: 'Document Analyzer',
     icon: (
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -27,13 +30,23 @@ const TABS = [
       </svg>
     ),
   },
+  {
+    id: 'commits',
+    label: 'Commits',
+    icon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="3" />
+        <line x1="3" y1="12" x2="9" y2="12" /><line x1="15" y1="12" x2="21" y2="12" />
+      </svg>
+    ),
+  },
 ]
 
 export function App() {
   useHealth()
   const { activeTab, setActiveTab, loadChats } = useAppStore()
+  const tab = (activeTab as Tab) ?? 'chat'
 
-  // Load chats from DB on mount — same as Claude/ChatGPT do on first page load
   useEffect(() => { loadChats() }, [loadChats])
 
   return (
@@ -42,21 +55,23 @@ export function App() {
 
       {/* Tab bar */}
       <div className="flex gap-0.5 px-5 pt-3 border-b border-border bg-surface flex-shrink-0">
-        {TABS.map((tab) => (
+        {TABS.map((t) => (
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn('tab', activeTab === tab.id && 'tab-active')}
+            key={t.id}
+            onClick={() => setActiveTab(t.id as 'chat' | 'analyze')}
+            className={cn('tab', tab === t.id && 'tab-active')}
           >
-            {tab.icon}
-            {tab.label}
+            {t.icon}
+            {t.label}
           </button>
         ))}
       </div>
 
       {/* Active panel */}
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'chat' ? <ChatPanel /> : <AnalyzePanel />}
+        {tab === 'chat' && <ChatPanel />}
+        {tab === 'analyze' && <AnalyzePanel />}
+        {tab === 'commits' && <CommitsPanel />}
       </div>
 
       <LogPanel />

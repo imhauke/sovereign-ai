@@ -45,5 +45,25 @@ async def init_db() -> None:
             );
 
             CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+
+            CREATE TABLE IF NOT EXISTS commits (
+                sha_full   TEXT PRIMARY KEY,
+                sha        TEXT NOT NULL,
+                message    TEXT NOT NULL,
+                author     TEXT NOT NULL,
+                date       TEXT NOT NULL,
+                url        TEXT NOT NULL,
+                cached_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS commit_details (
+                sha_full         TEXT PRIMARY KEY REFERENCES commits(sha_full) ON DELETE CASCADE,
+                body             TEXT NOT NULL DEFAULT '',
+                stats_additions  INTEGER NOT NULL DEFAULT 0,
+                stats_deletions  INTEGER NOT NULL DEFAULT 0,
+                stats_total      INTEGER NOT NULL DEFAULT 0,
+                files_json       TEXT NOT NULL DEFAULT '[]',
+                cached_at        TEXT NOT NULL DEFAULT (datetime('now'))
+            );
         """)
         await db.commit()

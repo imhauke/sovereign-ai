@@ -17,9 +17,9 @@ export function Header() {
 
       {/* Status */}
       <div className="flex items-center gap-3">
-        <div className="text-[11px] px-3 py-1 rounded-full border border-ok/20 bg-ok/10 text-ok">
+        {/* <div className="text-[11px] px-3 py-1 rounded-full border border-ok/20 bg-ok/10 text-ok">
           🔒 Zero data egress
-        </div>
+        </div> */}
         <div className="flex items-center gap-2 text-xs text-muted-light bg-surface2 border border-border rounded-full px-3 py-1.5">
           <span
             className={cn(

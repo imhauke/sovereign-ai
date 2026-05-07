@@ -5,7 +5,7 @@ import {
 } from '../api'
 import type { Chat, Message } from '../types'
 
-type Tab = 'chat' | 'analyze'
+type Tab = 'chat' | 'analyze' | 'commits'
 type ModelStatus = 'loading' | 'online' | 'error'
 
 interface AppState {
