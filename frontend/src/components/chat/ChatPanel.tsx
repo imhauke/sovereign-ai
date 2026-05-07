@@ -4,6 +4,7 @@ import { cn } from '../../lib/utils'
 import type { Message } from '../../types'
 import { ChatInput } from './ChatInput'
 import { ChatSidebar } from './ChatSidebar'
+import { Markdown } from './Markdown'
 
 function MessageBubble({ msg, isLast, streaming }: { msg: Message; isLast: boolean; streaming: boolean }) {
   const isUser = msg.role === 'user'
@@ -28,7 +29,11 @@ function MessageBubble({ msg, isLast, streaming }: { msg: Message; isLast: boole
               : cn('bg-surface border border-border text-white', msg.error && 'border-err/40 text-err'),
           )}
         >
-          <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+          {isUser ? (
+            <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
+          ) : (
+            <Markdown content={msg.content} />
+          )}
           {showCursor && (
             <span className="inline-block w-0.5 h-[14px] bg-accent-light animate-blink ml-0.5 align-middle" />
           )}
