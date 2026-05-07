@@ -34,7 +34,7 @@ export function ChatInput({ onSend, disabled, think, onThinkToggle }: Props) {
   function handleInput() {
     const el = ref.current
     if (!el) return
-    el.style.height = 'auto'
+    el.style.height = '43px'
     el.style.height = Math.min(el.scrollHeight, 140) + 'px'
     // Scrollbar only appears when there are explicit line breaks
     el.style.overflowY = el.value.includes('\n') ? 'auto' : 'hidden'
@@ -42,14 +42,14 @@ export function ChatInput({ onSend, disabled, think, onThinkToggle }: Props) {
   }
 
   return (
-    <div className="flex gap-2 items-end px-5 py-3.5 border-t border-border bg-surface flex-shrink-0">
+    <div className="flex gap-2 items-stretch px-5 py-3.5 border-t border-border bg-surface flex-shrink-0">
       <textarea
         ref={ref}
         rows={1}
         disabled={disabled}
         placeholder="Ask anything…"
-        className="input-base flex-1 max-h-[140px]"
-        style={{ overflowY: 'hidden' }}
+        className="input-base flex-1 max-h-[140px] box-border"
+        style={{ overflowY: 'hidden', height: '43px' }}
         onKeyDown={handleKeyDown}
         onInput={handleInput}
       />
@@ -60,7 +60,7 @@ export function ChatInput({ onSend, disabled, think, onThinkToggle }: Props) {
         disabled={disabled}
         title={think ? 'Deep reasoning ON — click to disable' : 'Deep reasoning OFF — click to enable'}
         className={cn(
-          'h-10 w-12 flex-shrink-0 flex items-center justify-center rounded-lg border transition-all',
+          'h-[43px] w-12 flex-shrink-0 flex items-center justify-center rounded-lg border transition-all',
           think
             ? 'border-accent/60 bg-accent/15 text-accent-light shadow-[0_0_10px_rgba(99,102,241,0.25)]'
             : 'border-border2 text-muted hover:border-muted hover:text-muted-light',
@@ -77,7 +77,7 @@ export function ChatInput({ onSend, disabled, think, onThinkToggle }: Props) {
         onClick={handleSend}
         disabled={disabled || !hasText}
         className={cn(
-          'h-10 w-12 flex-shrink-0 flex items-center justify-center rounded-lg transition-all duration-200',
+          'h-[43px] w-12 flex-shrink-0 flex items-center justify-center rounded-lg transition-all duration-200',
           hasText && !disabled
             ? 'bg-accent hover:bg-accent-light text-white border border-transparent'
             : 'bg-accent/15 border border-accent/25 text-accent-light/40 cursor-not-allowed',
