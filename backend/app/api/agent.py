@@ -33,8 +33,11 @@ TOOLS = [
 ]
 
 async def _http_get(url: str) -> str:
+    headers: dict[str, str] = {"User-Agent": "sovereign-ai/1.0"}
+    if settings.github_token:
+        headers["Authorization"] = f"Bearer {settings.github_token}"
     async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.get(url, headers={"User-Agent": "sovereign-ai/1.0"})
+        r = await client.get(url, headers=headers)
         r.raise_for_status()
         return r.text
 
