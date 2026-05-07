@@ -6,7 +6,7 @@ autonomously which URLs to call, what data to extract, and how to format it.
 import json
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 from ..config import settings
@@ -120,107 +120,54 @@ def _parse_github_detail(d: dict) -> dict:
         "url": d["html_url"],
         "stats": d.get("stats", {}),
         "files": [
-            {
-                "filename": f["filename"],
-                "status": f["status"],
-                "additions": f["additions"],
-                "deletions": f["deletions"],
-                "patch": f.get("patch"),
-            }
+            {"filename": f["filename"], "status": f["status"],
+             "additions": f["additions"], "deletions": f["deletions"], "patch": f.get("patch")}
             for f in d.get("files", [])[:20]
         ],
     }
 
 
-@router.get("/commits")
-async def get_commits_structured(limit: int = 20, refresh: bool = False):
-    # ── 1. Cache hit ────────────────────────────────────────────────────────────
-    if not refresh:
-        async with get_db() as db:
-            rows = await db.execute_fetchall(
-                "SELECT sha, sha_full, message, author, date, url FROM commits ORDER BY date DESC LIMIT ?",
-                (limit,),
-            )
-        if rows:
-            log("commits_cache_hit", count=len(rows))
-            return {"commits": [dict(r) for r in rows], "source": "cache"}
-
-    # ── 2. Cache miss → AI fetches from GitHub ──────────────────────────────────
-    log("commits_cache_miss", refresh=refresh)
+async def _fetch_and_store_commits(limit: int) -> list[dict]:
+    """Ask the AI which URL to call, fetch from GitHub, persist new commits."""
     messages = [
         {"role": "system", "content": _SYSTEM},
         {"role": "user", "content": f"Fetch the last {limit} commits."},
     ]
     _, tool_responses = await _agent_loop(messages, stop_after_fetch=True)
     if not tool_responses:
-        return {"commits": [], "source": "error"}
-
+        return []
     try:
         raw = json.loads(tool_responses[-1])
         commits = _parse_github_commits(raw if isinstance(raw, list) else [])
     except Exception as e:
         log("agent_parse_error", error=str(e))
-        return {"commits": [], "source": "error"}
-
-    # ── 3. Persist new commits (INSERT OR IGNORE deduplicates) ──────────────────
+        return []
     async with get_db() as db:
         await db.executemany(
             "INSERT OR IGNORE INTO commits (sha_full, sha, message, author, date, url) VALUES (?,?,?,?,?,?)",
             [(c["sha_full"], c["sha"], c["message"], c["author"], c["date"], c["url"]) for c in commits],
         )
         await db.commit()
-    log("commits_cached", stored=len(commits))
-    return {"commits": commits, "source": "github"}
+    log("commits_stored", count=len(commits))
+    return commits
 
 
-@router.get("/commit/{sha}")
-async def get_commit_detail(sha: str, refresh: bool = False):
-    # ── 1. Cache hit ────────────────────────────────────────────────────────────
-    if not refresh:
-        async with get_db() as db:
-            rows = await db.execute_fetchall(
-                """SELECT c.sha, c.sha_full, c.message, c.author, c.date, c.url,
-                          d.body, d.stats_additions, d.stats_deletions, d.stats_total, d.files_json
-                   FROM commits c JOIN commit_details d ON c.sha_full = d.sha_full
-                   WHERE c.sha_full = ? OR c.sha = ?""",
-                (sha, sha),
-            )
-        if rows:
-            r = dict(rows[0])
-            log("commit_detail_cache_hit", sha=sha)
-            return {
-                "sha": r["sha"], "sha_full": r["sha_full"],
-                "message": r["message"], "body": r["body"],
-                "author": r["author"], "date": r["date"], "url": r["url"],
-                "stats": {
-                    "additions": r["stats_additions"],
-                    "deletions": r["stats_deletions"],
-                    "total": r["stats_total"],
-                },
-                "files": json.loads(r["files_json"]),
-                "source": "cache",
-            }
-
-    # ── 2. Cache miss → AI fetches from GitHub ──────────────────────────────────
-    log("commit_detail_cache_miss", sha=sha)
+async def _fetch_and_store_detail(sha: str) -> dict:
+    """Ask the AI which URL to call, fetch commit detail from GitHub, persist it."""
     messages = [
         {"role": "system", "content": _SYSTEM},
         {"role": "user", "content": f"Fetch full details for commit {sha}."},
     ]
     _, tool_responses = await _agent_loop(messages, stop_after_fetch=True)
     if not tool_responses:
-        return {"error": "No data fetched"}
-
+        return {}
     try:
         detail = _parse_github_detail(json.loads(tool_responses[-1]))
     except Exception as e:
         log("agent_parse_error", sha=sha, error=str(e))
-        return {"error": str(e)}
-
-    # ── 3. Persist ──────────────────────────────────────────────────────────────
+        return {}
     stats = detail.get("stats", {})
     async with get_db() as db:
-        # Ensure parent commit row exists
         await db.execute(
             "INSERT OR IGNORE INTO commits (sha_full, sha, message, author, date, url) VALUES (?,?,?,?,?,?)",
             (detail["sha_full"], detail["sha"], detail["message"], detail["author"], detail["date"], detail["url"]),
@@ -229,14 +176,84 @@ async def get_commit_detail(sha: str, refresh: bool = False):
             """INSERT OR REPLACE INTO commit_details
                (sha_full, body, stats_additions, stats_deletions, stats_total, files_json)
                VALUES (?,?,?,?,?,?)""",
-            (
-                detail["sha_full"], detail.get("body", ""),
-                stats.get("additions", 0), stats.get("deletions", 0), stats.get("total", 0),
-                json.dumps(detail.get("files", [])),
-            ),
+            (detail["sha_full"], detail.get("body", ""),
+             stats.get("additions", 0), stats.get("deletions", 0), stats.get("total", 0),
+             json.dumps(detail.get("files", []))),
         )
         await db.commit()
-    log("commit_detail_cached", sha=sha)
+    log("commit_detail_stored", sha=sha)
+    return detail
+
+
+@router.get("/commits")
+async def get_commits_structured(
+    background_tasks: BackgroundTasks,
+    limit: int = 20,
+    refresh: bool = False,
+):
+    # refresh=True → skip cache, fetch GitHub synchronously and wait
+    if refresh:
+        log("commits_force_refresh")
+        commits = await _fetch_and_store_commits(limit)
+        return {"commits": commits, "source": "github"}
+
+    # Return DB immediately → schedule background fetch to pick up new commits
+    async with get_db() as db:
+        rows = await db.execute_fetchall(
+            "SELECT sha, sha_full, message, author, date, url FROM commits ORDER BY date DESC LIMIT ?",
+            (limit,),
+        )
+
+    if rows:
+        log("commits_cache_hit", count=len(rows))
+        # Fire-and-forget: fetches GitHub in background, stores any new commits
+        background_tasks.add_task(_fetch_and_store_commits, limit)
+        return {"commits": [dict(r) for r in rows], "source": "cache"}
+
+    # DB empty → must wait for first GitHub fetch
+    log("commits_cold_start")
+    commits = await _fetch_and_store_commits(limit)
+    return {"commits": commits, "source": "github"}
+
+
+@router.get("/commit/{sha}")
+async def get_commit_detail(
+    sha: str,
+    background_tasks: BackgroundTasks,
+    refresh: bool = False,
+):
+    # refresh=True → fetch GitHub synchronously
+    if refresh:
+        log("commit_detail_force_refresh", sha=sha)
+        detail = await _fetch_and_store_detail(sha)
+        return {**detail, "source": "github"}
+
+    # Return DB immediately if detail cached
+    async with get_db() as db:
+        rows = await db.execute_fetchall(
+            """SELECT c.sha, c.sha_full, c.message, c.author, c.date, c.url,
+                      d.body, d.stats_additions, d.stats_deletions, d.stats_total, d.files_json
+               FROM commits c JOIN commit_details d ON c.sha_full = d.sha_full
+               WHERE c.sha_full = ? OR c.sha = ?""",
+            (sha, sha),
+        )
+    if rows:
+        r = dict(rows[0])
+        log("commit_detail_cache_hit", sha=sha)
+        # Background refresh to keep detail up to date
+        background_tasks.add_task(_fetch_and_store_detail, r["sha_full"])
+        return {
+            "sha": r["sha"], "sha_full": r["sha_full"],
+            "message": r["message"], "body": r["body"],
+            "author": r["author"], "date": r["date"], "url": r["url"],
+            "stats": {"additions": r["stats_additions"], "deletions": r["stats_deletions"], "total": r["stats_total"]},
+            "files": json.loads(r["files_json"]),
+            "source": "cache",
+        }
+
+    # Not cached → wait for GitHub
+    log("commit_detail_cold_start", sha=sha)
+    detail = await _fetch_and_store_detail(sha)
     return {**detail, "source": "github"}
 
 

@@ -234,14 +234,25 @@ export function CommitsPanel() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function loadCommits() {
+  async function loadCommits(force = false) {
     setLoadingCommits(true)
     setError(null)
     try {
-      const r = await fetch('/api/agent/commits?limit=20')
+      const url = force ? '/api/agent/commits?limit=20&refresh=true' : '/api/agent/commits?limit=20'
+      const r = await fetch(url)
       if (!r.ok) throw new Error(`${r.status}`)
       const d = await r.json()
       setCommits(d.commits ?? [])
+      // If served from cache, re-fetch after 5s to pick up background task results
+      if (!force && d.source === 'cache') {
+        setTimeout(async () => {
+          try {
+            const r2 = await fetch('/api/agent/commits?limit=20')
+            const d2 = await r2.json()
+            setCommits(d2.commits ?? [])
+          } catch { /* silent */ }
+        }, 5000)
+      }
     } catch (e) {
       setError(String(e))
     } finally {
@@ -283,7 +294,7 @@ export function CommitsPanel() {
             <span className="text-[11px] text-muted">{commits.length} commits</span>
           )}
           <button
-            onClick={loadCommits}
+            onClick={() => loadCommits(true)}
             disabled={loadingCommits}
             className="flex items-center gap-1.5 text-[12px] text-muted hover:text-white px-2.5 py-1.5 rounded-lg border border-border2 hover:border-muted transition-all disabled:opacity-40"
           >
