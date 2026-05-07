@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useHealth } from './hooks/useHealth'
 import { useAppStore } from './store/app'
 import { cn } from './lib/utils'
@@ -30,7 +31,10 @@ const TABS = [
 
 export function App() {
   useHealth()
-  const { activeTab, setActiveTab } = useAppStore()
+  const { activeTab, setActiveTab, loadChats } = useAppStore()
+
+  // Load chats from DB on mount — same as Claude/ChatGPT do on first page load
+  useEffect(() => { loadChats() }, [loadChats])
 
   return (
     <div className="flex flex-col h-full bg-bg overflow-hidden">

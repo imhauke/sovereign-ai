@@ -1,15 +1,12 @@
 import { create } from 'zustand'
-import { uid } from '../lib/utils'
+import {
+  apiCreateChat, apiDeleteChat, apiGetMessages,
+  apiListChats, apiUpdateChat,
+} from '../api'
 import type { Chat, Message } from '../types'
 
 type Tab = 'chat' | 'analyze'
 type ModelStatus = 'loading' | 'online' | 'error'
-
-function makeChat(): Chat {
-  return { id: uid(), title: 'New Chat', messages: [], think: false, createdAt: new Date() }
-}
-
-const first = makeChat()
 
 interface AppState {
   activeTab: Tab
@@ -18,87 +15,124 @@ interface AppState {
   modelLabel: string
   setModel: (status: ModelStatus, label: string) => void
 
-  // Chat list
+  // Chat list — source of truth is the server
   chats: Chat[]
-  activeChatId: string
-  createChat: () => void
-  setActiveChatId: (id: string) => void
-  deleteChat: (id: string) => void
-  setChatTitle: (chatId: string, title: string) => void
-  setThink: (chatId: string, think: boolean) => void
+  activeChatId: string | null
 
-  // Message mutations
+  // Messages cache — keyed by chatId, loaded on demand from server
+  messageCache: Record<string, Message[]>
+
+  // Server actions
+  loadChats: () => Promise<void>
+  createChat: () => Promise<void>
+  setActiveChatId: (id: string) => Promise<void>
+  renameChat: (id: string, title: string) => Promise<void>
+  deleteChat: (id: string) => Promise<void>
+  toggleThink: (id: string) => Promise<void>
+
+  // Optimistic message mutations (for streaming)
   appendMessage: (chatId: string, msg: Message) => void
   appendToken: (chatId: string, msgId: string, token: string) => void
   patchMessage: (chatId: string, msgId: string, patch: Partial<Message>) => void
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   activeTab: 'chat',
   setActiveTab: (tab) => set({ activeTab: tab }),
   modelStatus: 'loading',
   modelLabel: 'Connecting…',
   setModel: (modelStatus, modelLabel) => set({ modelStatus, modelLabel }),
 
-  chats: [first],
-  activeChatId: first.id,
+  chats: [],
+  activeChatId: null,
+  messageCache: {},
 
-  createChat: () => {
-    const chat = makeChat()
-    set((s) => ({ chats: [chat, ...s.chats], activeChatId: chat.id }))
+  loadChats: async () => {
+    const chats = await apiListChats()
+    const { activeChatId } = get()
+    const nextActive = activeChatId ?? chats[0]?.id ?? null
+    set({ chats, activeChatId: nextActive })
+    // Load messages for the active chat
+    if (nextActive && !get().messageCache[nextActive]) {
+      const messages = await apiGetMessages(nextActive)
+      set((s) => ({ messageCache: { ...s.messageCache, [nextActive]: messages } }))
+    }
   },
 
-  setActiveChatId: (id) => set({ activeChatId: id }),
-
-  deleteChat: (id) =>
-    set((s) => {
-      const remaining = s.chats.filter((c) => c.id !== id)
-      if (remaining.length === 0) {
-        const fresh = makeChat()
-        return { chats: [fresh], activeChatId: fresh.id }
-      }
-      const nextId = s.activeChatId === id ? remaining[0].id : s.activeChatId
-      return { chats: remaining, activeChatId: nextId }
-    }),
-
-  setChatTitle: (chatId, title) =>
+  createChat: async () => {
+    const chat = await apiCreateChat()
     set((s) => ({
-      chats: s.chats.map((c) => (c.id === chatId ? { ...c, title } : c)),
-    })),
+      chats: [chat, ...s.chats],
+      activeChatId: chat.id,
+      messageCache: { ...s.messageCache, [chat.id]: [] },
+    }))
+  },
 
-  setThink: (chatId, think) =>
-    set((s) => ({
-      chats: s.chats.map((c) => (c.id === chatId ? { ...c, think } : c)),
-    })),
+  setActiveChatId: async (id) => {
+    set({ activeChatId: id })
+    if (!get().messageCache[id]) {
+      const messages = await apiGetMessages(id)
+      set((s) => ({ messageCache: { ...s.messageCache, [id]: messages } }))
+    }
+  },
+
+  renameChat: async (id, title) => {
+    const updated = await apiUpdateChat(id, { title })
+    set((s) => ({ chats: s.chats.map((c) => (c.id === id ? updated : c)) }))
+  },
+
+  deleteChat: async (id) => {
+    await apiDeleteChat(id)
+    const remaining = get().chats.filter((c) => c.id !== id)
+    let nextId = get().activeChatId
+    if (nextId === id) nextId = remaining[0]?.id ?? null
+
+    const cache = { ...get().messageCache }
+    delete cache[id]
+
+    if (remaining.length === 0) {
+      // Always keep at least one chat
+      const fresh = await apiCreateChat()
+      set({ chats: [fresh], activeChatId: fresh.id, messageCache: { [fresh.id]: [] } })
+    } else {
+      set({ chats: remaining, activeChatId: nextId, messageCache: cache })
+    }
+  },
+
+  toggleThink: async (id) => {
+    const chat = get().chats.find((c) => c.id === id)
+    if (!chat) return
+    const updated = await apiUpdateChat(id, { think: !chat.think })
+    set((s) => ({ chats: s.chats.map((c) => (c.id === id ? updated : c)) }))
+  },
+
+  // ── Optimistic mutations for streaming ──────────────────────────────────────
 
   appendMessage: (chatId, msg) =>
     set((s) => ({
-      chats: s.chats.map((c) =>
-        c.id === chatId ? { ...c, messages: [...c.messages, msg] } : c,
-      ),
+      messageCache: {
+        ...s.messageCache,
+        [chatId]: [...(s.messageCache[chatId] ?? []), msg],
+      },
     })),
 
-  // Uses set's function form so it always reads latest content — safe for streaming
   appendToken: (chatId, msgId, token) =>
     set((s) => ({
-      chats: s.chats.map((c) =>
-        c.id === chatId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === msgId ? { ...m, content: m.content + token } : m,
-              ),
-            }
-          : c,
-      ),
+      messageCache: {
+        ...s.messageCache,
+        [chatId]: (s.messageCache[chatId] ?? []).map((m) =>
+          m.id === msgId ? { ...m, content: m.content + token } : m,
+        ),
+      },
     })),
 
   patchMessage: (chatId, msgId, patch) =>
     set((s) => ({
-      chats: s.chats.map((c) =>
-        c.id === chatId
-          ? { ...c, messages: c.messages.map((m) => (m.id === msgId ? { ...m, ...patch } : m)) }
-          : c,
-      ),
+      messageCache: {
+        ...s.messageCache,
+        [chatId]: (s.messageCache[chatId] ?? []).map((m) =>
+          m.id === msgId ? { ...m, ...patch } : m,
+        ),
+      },
     })),
 }))

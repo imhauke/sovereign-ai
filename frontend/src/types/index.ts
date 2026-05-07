@@ -7,12 +7,13 @@ export interface Message {
   error?: boolean
 }
 
+/** Chat metadata — matches the DB row. Messages are loaded separately. */
 export interface Chat {
   id: string
   title: string
-  messages: Message[]
   think: boolean
-  createdAt: Date
+  created_at: string
+  updated_at: string
 }
 
 export interface AnalysisResult {
