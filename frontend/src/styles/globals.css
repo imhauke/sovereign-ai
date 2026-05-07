@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body { @apply bg-bg text-white font-sans antialiased; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-border2 rounded-full; }
+}
+
+@layer components {
+  .tab {
+    @apply flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-muted rounded-t-lg
+           border-b-2 border-transparent cursor-pointer transition-all duration-150
+           hover:text-white hover:bg-surface2;
+  }
+  .tab-active {
+    @apply text-accent-light bg-surface2 border-accent;
+  }
+  .input-base {
+    @apply w-full bg-surface2 border border-border2 rounded-lg text-white placeholder-muted
+           px-3 py-2.5 text-sm resize-none font-sans leading-relaxed
+           focus:outline-none focus:border-accent transition-colors;
+  }
+  .btn-primary {
+    @apply flex items-center justify-center gap-2 px-4 py-2.5 bg-accent hover:bg-accent-light
+           text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .card {
+    @apply bg-surface border border-border rounded-xl overflow-hidden;
+  }
+  .card-row {
+    @apply p-4 border-b border-border last:border-0;
+  }
+  .label {
+    @apply text-[10px] uppercase tracking-widest text-muted font-bold mb-1;
+  }
+  .tag {
+    @apply text-xs px-2.5 py-1 rounded-full border border-border2 text-muted-light;
+  }
+}
